@@ -1,0 +1,404 @@
+/*
+Cuckoo Sandbox - Automated Malware Analysis.
+Copyright (C) 2010-2015 Cuckoo Foundation.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#include <stdio.h>
+#include <stdint.h>
+#include "hooks.h"
+#include "diffing.h"
+#include "flags.h"
+#include "hooking.h"
+#include "hook-info.h"
+#include "ignore.h"
+#include "memory.h"
+#include "monitor.h"
+#include "native.h"
+#include "ntapi.h"
+#include "log.h"
+#include "misc.h"
+#include "misc2.h"
+#include "pipe.h"
+#include "sleep.h"
+#include "unhook.h"
+
+{% macro log_api(hook, ret='') -%}
+    log_api(SIG_{{ hook.library }}_{{ hook.apiname }},
+        {{ ret or hook.signature.is_success }},
+        {%- if hook.signature.return_value != 'void' %}
+        {% if ret %}{{ ret }}{% else %}(uintptr_t) ret{% endif %},
+        hash,
+        {%- else %}
+        0,
+        hash,
+        {%- endif %}
+        &lasterror
+    {%- if hook.prelog: -%}
+        ,
+        prelen, prebuf
+    {%- endif %}
+    {%- for param in hook.parameters: -%}
+        {% if param.log == True: -%}
+        ,
+        {{ param.argname }}
+        {%- endif %}
+    {%- endfor %}
+    {%- for log in hook.logging: -%}
+        ,
+        {{ log.argvalue }}
+    {%- endfor %}
+    );
+{%- endmacro %}
+
+{% macro call_old(hook, replace_args=True, lasterr=True) -%}
+    set_last_error(&lasterror);
+    {%- if hook.signature.return_value != 'void' %}
+    {{ hook.signature.return_value }} ret = Old_{{ hook.library }}_{{ hook.apiname }}(
+    {%- else %}
+    Old_{{ hook.library }}_{{ hook.apiname }}(
+    {%- endif %}
+    {%- for param in hook.parameters: %}
+        {% if replace_args and param.argname in hook.replace -%}
+            {{ hook.replace[param.argname] }}
+        {%- else -%}
+            {{ param.argname }}
+        {%- endif %}
+        {%- if not loop.last %},{% endif -%}
+    {%- endfor %}
+    );
+    {%- if lasterr %}
+    get_last_error(&lasterror);
+    {%- endif %}
+{%- endmacro %}
+
+{%- for hook in sigs if hook.is_hook and not hook.ignore and not hook.is_insn: %}
+
+
+static {{ hook.signature.return_value }} ({{ hook.signature.calling_convention }} *Old_{{ hook.library }}_{{ hook.apiname }})(
+{%- for param in hook.parameters: %}
+    {{ param.argtype }}
+    {%- if not param.argtype.endswith('*') %} {% endif -%}
+    {{ param.argname }}
+    {%- if not loop.last %},{% endif -%}
+{%- endfor %}
+);
+
+{% endfor %}
+{%- for hook in sigs if hook.is_hook and not hook.ignore and not hook.is_insn: %}
+
+{{ hook.signature.return_value }} {{ hook.signature.calling_convention }} New_{{ hook.library }}_{{ hook.apiname }}(
+{%- for param in hook.parameters: %}
+    {{ param.argtype }}
+    {%- if not param.argtype.endswith('*') %} {% endif -%}
+    {{ param.argname }}
+    {%- if not loop.last %},{% endif -%}
+{%- endfor %}
+) {
+    last_error_t lasterror;
+    get_last_error(&lasterror);
+
+    log_debug("Entered %s\n", "{{ hook.apiname }}");
+
+    {%- if not hook.signature.special: %}
+
+    if(hook_in_monitor() != 0) {
+        log_debug("Early leave of %s\n", "{{ hook.apiname }}");
+
+        {{ call_old(hook, replace_args=False, lasterr=False)|indent }}
+
+        {%- if hook.signature.return_value != 'void' %}
+        return ret;
+        {%- else %}
+        return;
+        {%- endif %}
+    }
+    {%- endif %}
+
+    {%- for param in hook.ensure.keys(): %}
+
+    {{ hook.ensure[param] }} _{{ param }};
+    if({{ param }} == NULL) {
+        {{ param }} = &_{{ param }};
+        memset(&_{{ param }}, 0, sizeof({{ hook.ensure[param] }}));
+    }
+    {%- endfor %}
+
+    {%- if hook.pre: %}
+    {% for line in hook.pre: %}
+    {{ line }}
+    {%- endfor %}
+    {%- endif %}
+
+    {%- if hook.interesting %}
+
+    uint64_t hash = call_hash(
+        "{{ hook.interesting|join(attribute='argtype') }}"
+        {%- if hook.interesting %}, {% endif %}
+        {{ hook.interesting|join(',\n        ', attribute='argvalue') }}
+    );
+    {%- elif hook.signature.interesting %}
+
+    uint64_t hash = call_hash("");
+    {%- endif %}
+    {%- if hook.interesting or hook.signature.interesting %}
+    if(is_interesting_hash(hash) == 0) {
+        log_debug("Uninteresting %s\n", "{{ hook.apiname }}");
+
+        {{ call_old(hook, lasterr=False)|indent }}
+
+        {%- if hook.signature.return_value != 'void' %}
+        return ret;
+        {%- else %}
+        return;
+        {%- endif %}
+    }
+    {%- elif hook.signature.logging != 'no' %}
+
+    uint64_t hash = 0;
+    {%- endif %}
+
+    {%- if hook.prelog: %}
+
+    uintptr_t prelen = {{ hook.prelog.length }};
+    uint8_t *prebuf = memdup({{ hook.prelog.buffer }}, prelen);
+    {%- endif %}
+
+    {%- if hook.signature.prelog == 'instant' %}
+    {{ log_api(hook, ret='0') }}
+    {% endif %}
+
+    {{ call_old(hook) }}
+
+    {%- if hook.middle: %}
+    {% for line in hook.middle: %}
+    {{ line }}
+    {%- endfor %}
+    {%- endif %}
+
+    {%- if hook.signature.special %}
+        {% if hook.signature.logging == 'always': %}
+    {{ log_api(hook) }}
+        {% elif hook.signature.logging != 'no': %}
+    if(hook_in_monitor() == 0) {
+        {{ log_api(hook)|indent }}
+    }
+        {% endif %}
+    {%- elif hook.signature.logging != 'no' %}
+
+    {{ log_api(hook) }}
+    {%- endif %}
+
+    {%- if hook.post: %}
+    {% for line in hook.post: %}
+    {{ line }}
+    {%- endfor %}
+    {%- endif %}
+
+    log_debug("Leaving %s\n", "{{ hook.apiname }}");
+
+    set_last_error(&lasterror);
+
+    {%- if hook.prelog: %}
+    mem_free(prebuf);
+    {%- endif %}
+
+    {%- if hook.signature.return_value != 'void' %}
+    return ret;
+    {%- endif %}
+}
+
+{%- endfor %}
+
+static const char *g_explain_apinames[] = {
+{%- for hook in sigs if not hook.ignore: %}
+    "{{ hook.apiname }}",
+{%- endfor %}
+    NULL,
+};
+
+static const char *g_explain_categories[] = {
+{%- for hook in sigs if not hook.ignore: %}
+    // {{ hook.apiname }}
+    "{{ hook.signature.category }}",
+{%- endfor %}
+};
+
+static const char *g_explain_paramtypes[] = {
+{%- for hook in sigs if not hook.ignore: %}
+    // {{ hook.apiname }}
+    "
+    {%- if hook.prelog: -%}
+        {{ hook.prelog.argtype }}
+    {%- endif -%}
+    {%- for param in hook.parameters: -%}
+        {% if param.log %}{{ types[param.argtype] }}{% endif %}
+    {%- endfor -%}
+    {%- for param in hook.logging: -%}
+        {{ param.argtype }}
+    {%- endfor -%}
+    ",
+{%- endfor %}
+};
+
+static const char *g_explain_paramnames[][16] = {
+{%- for hook in sigs if not hook.ignore: %}
+    // {{ hook.apiname }}
+    {
+    {%- if hook.prelog: %}
+        "{{ hook.prelog.argname }}",
+    {%- endif %}
+    {%- for param in hook.parameters|selectattr('log'): %}
+        "{{ param.alias }}",
+    {%- endfor %}
+    {%- for param in hook.logging: %}
+        "{{ param.argname }}",
+    {%- endfor %}
+    },
+{%- endfor %}
+};
+
+static hook_t g_hooks[] = {
+{%- for hook in sigs if not hook.ignore: %}
+    {%- if hook.is_hook: %}
+    {
+        "{{ hook.signature.library }}",
+        "{{ hook.apiname }}",
+        {% if not hook.is_insn %}(FARPROC) New_{{ hook.library }}_{{ hook.apiname }}{% else %}NULL{% endif %},
+        {% if not hook.is_insn %}(FARPROC *) &Old_{{ hook.library }}_{{ hook.apiname }}{% else %}NULL{% endif %},
+        .special = {{ hook.signature.special.__int__() }},
+        .report = {% if 'resolve' in hook.signature.prune %}HOOK_PRUNE_RESOLVERR{% else %}0{% endif %},
+        .mode = {% if 'mode' in hook.signature %}{{ hook.signature.mode }}{% else %}HOOK_MODE_ALL{% endif %},
+        .type = {% if hook.is_insn %}HOOK_TYPE_INSN{% else %}HOOK_TYPE_NORMAL{% endif %},
+        {% if 'init' in hook.signature.callback -%}
+            .initcb = &hook_initcb_{{ hook.apiname }},
+        {%- endif %}
+        {% if 'addr' in hook.signature.callback -%}
+            .addrcb = &hook_addrcb_{{ hook.apiname }},
+        {%- endif %}
+        {% if 'module' in hook.signature.callback -%}
+            {% if hook.is_insn %}
+                .addrcb = &hook_insmodulecb_{{ hook.library }},
+            {% else %}
+                .addrcb = &hook_modulecb_{{ hook.library }},
+            {% endif %}
+        {% endif %}
+    },
+    {%- endif %}
+{%- endfor %}
+    {NULL},
+};
+
+static const flag_t g_api_flags[MONITOR_HOOKCNT][8] = {
+{%- for hook in sigs if not hook.ignore: %}
+    [SIG_{{ hook.library }}_{{ hook.apiname }}] = {
+        {%- for flag in hook.flags: %}
+        FLAG_{{ flag.flagname }},
+        {%- endfor %}
+        FLAG_NONE,
+    },
+{%- endfor %}
+};
+
+static const char *g_api_flagnames[MONITOR_HOOKCNT][8] = {
+{%- for hook in sigs if not hook.ignore: %}
+    [SIG_{{ hook.library }}_{{ hook.apiname }}] = {
+        {%- for flag in hook.flags: %}
+        "{{ flag.name }}",
+        {%- endfor %}
+        NULL,
+    },
+{%- endfor %}
+};
+
+const char *sig_flag_name(uint32_t sigidx, uint32_t flagidx)
+{
+    return g_api_flagnames[sigidx][flagidx];
+}
+
+uint32_t sig_flag_value(uint32_t sigidx, uint32_t flagidx)
+{
+    return g_api_flags[sigidx][flagidx];
+}
+
+const char *sig_apiname(uint32_t sigidx)
+{
+    return g_explain_apinames[sigidx];
+}
+
+const char *sig_category(uint32_t sigidx)
+{
+    return g_explain_categories[sigidx];
+}
+
+const char *sig_paramtypes(uint32_t sigidx)
+{
+    return g_explain_paramtypes[sigidx];
+}
+
+const char *sig_param_name(uint32_t sigidx, uint32_t argidx)
+{
+    return g_explain_paramnames[sigidx][argidx];
+}
+
+uint32_t sig_count()
+{
+    return MONITOR_HOOKCNT;
+}
+
+uint32_t sig_index_process()
+{
+    return SIG____process__;
+}
+
+uint32_t sig_index_anomaly()
+{
+    return SIG____anomaly__;
+}
+
+uint32_t sig_index_exception()
+{
+    return SIG____exception__;
+}
+
+uint32_t sig_index_missing()
+{
+    return SIG____missing__;
+}
+
+uint32_t sig_index_action()
+{
+    return SIG____action__;
+}
+
+uint32_t sig_index_guardrw()
+{
+    return SIG____guardrw__;
+}
+
+uint32_t sig_index_firsthookidx()
+{
+    return MONITOR_FIRSTHOOKIDX;
+}
+
+hook_t *sig_hooks()
+{
+    return g_hooks;
+}
+
+uint32_t sig_hook_count()
+{
+    return MONITOR_HOOKCNT;
+}

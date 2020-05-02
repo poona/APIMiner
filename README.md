@@ -1,2 +1,4 @@
-# APIMiner
-API Logger for Windows Malwares
+APIMiner
+=======
+
+APIMiner, the API Logger for Windows Executables.

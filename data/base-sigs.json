@@ -1,0 +1,69 @@
+[
+    {
+        "apiname": "__process__",
+        "parameters": [
+            {"argtype": "ULONG", "argname": "time_low"},
+            {"argtype": "ULONG", "argname": "time_high"},
+            {"argtype": "ULONG", "argname": "pid"},
+            {"argtype": "ULONG", "argname": "ppid"},
+            {"argtype": "LPWSTR", "argname": "module_path"},
+            {"argtype": "LPWSTR", "argname": "command_line"},
+            {"argtype": "int", "argname": "is_64bit"},
+            {"argtype": "int", "argname": "track"},
+            {"argtype": "bson *", "argname": "modules"}
+        ],
+        "signature": {
+            "category": "__notification__"
+        }
+    },
+    {
+        "apiname": "__anomaly__",
+        "parameters": [
+            {"argtype": "ULONG", "argname": "tid"},
+            {"argtype": "LPCSTR", "argname": "subcategory"},
+            {"argtype": "LPCSTR", "argname": "function_name"},
+            {"argtype": "LPCSTR", "argname": "message"}
+        ],
+        "signature": {
+            "category": "__notification__"
+        }
+    },
+    {
+        "apiname": "__exception__",
+        "parameters": [
+            {"argtype": "bson *", "argname": "exception"},
+            {"argtype": "bson *", "argname": "registers"},
+            {"argtype": "bson *", "argname": "stacktrace"}
+        ],
+        "signature": {
+            "category": "__notification__"
+        }
+    },
+    {
+        "apiname": "__missing__",
+        "parameters": [
+            {"argtype": "LPCSTR", "argname": "function_name"}
+        ],
+        "signature": {
+            "category": "__notification__"
+        }
+    },
+    {
+        "apiname": "__action__",
+        "parameters": [
+            {"argtype": "LPCSTR", "argname": "action"}
+        ],
+        "signature": {
+            "category": "__notification__"
+        }
+    },
+    {
+        "apiname": "__guardrw__",
+        "parameters": [
+            {"argtype": "uintptr_t", "argname": "address"}
+        ],
+        "signature": {
+            "category": "__notification__"
+        }
+    }
+]

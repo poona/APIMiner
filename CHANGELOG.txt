@@ -1,0 +1,17 @@
+- Version 1.0.0
+  The first version.
+
+  A default apiminer_config.txt is provided in the root folder of this
+  repository. Config file should be located in standard fixed path
+  C:\apiminer-config.txt. The config file should contain only a single
+  config param specified below -
+  log-dir-path=C:\Users\<username>\Documents\
+
+  The log file containing the API traces would generated at the above folder
+  specified in the log-dir-path provided by apiminer_config.txt config file.
+
+  This version also requires the file apiminer-monitor-x86.dll to be
+  located in the same directory as APIMiner.exe.
+
+  To run a sample, you can type,
+  APIMiner --app <sample_path>
