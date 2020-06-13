@@ -509,6 +509,18 @@ int dump(uint32_t pid, const wchar_t *filepath,
 
 int main()
 {
+    printf("       d8888 8888888b. 8888888 888b     d888 d8b\n");
+    printf("      d88888 888   Y88b  888   8888b   d8888 Y8P\n");
+    printf("     d88P888 888    888  888   88888b.d88888\n");
+    printf("    d88P 888 888   d88P  888   888Y88888P888 888 88888b.   .d88b.  888d888\n");
+    printf("   d88P  888 8888888P\"   888   888 Y888P 888 888 888 \"88b d8P  Y8b 888P\"\n");
+    printf("  d88P   888 888         888   888  Y8P  888 888 888  888 88888888 888\n");
+    printf(" d8888888888 888         888   888   \"   888 888 888  888 Y8b.     888\n");
+    printf("d88P     888 888       8888888 888       888 888 888  888  \"Y8888  888\n");
+
+    printf("\nAPIMiner v1.0.0\n");
+    printf("API Logger for Windows Executables\n");
+
     LPWSTR *argv; int argc;
 
     argv = CommandLineToArgvW(GetCommandLineW(), &argc);
@@ -520,7 +532,7 @@ int main()
         error(
             "Usage: %S <options..>\n"
             "Options:\n"
-            "  --app <app>            Path to application to start\n"
+            "  --app <app>            Path to the application to monitor\n"
             "  --args <args>          Command-line arguments\n"
             "                         Excluding the application path!\n",
             argv[0]
@@ -770,7 +782,7 @@ int main()
 
     // Do not do actual injection here, just have the application launched.
     if(only_start != 0) {
-        printf("%d %d", pid, tid);
+        //printf("%d %d", pid, tid);
         return 0;
     }
 
@@ -805,6 +817,6 @@ int main()
     }
 
     // Report the process and thread identifiers.
-    printf("%d %d", pid, tid);
+    //printf("%d %d", pid, tid);
     return 0;
 }

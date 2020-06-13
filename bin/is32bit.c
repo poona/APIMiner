@@ -85,7 +85,7 @@ static int determine_process_identifier(uint32_t pid)
     // If the IsWow64Process function doesn't exist then this is an older
     // 32-bit Windows version.
     if(pIsWow64Process == NULL) {
-        printf("32");
+        ;//printf("32");
     }
     // If it fails then we emit an error.
     else if(pIsWow64Process(process_handle, &wow64_process) == FALSE) {
@@ -94,7 +94,7 @@ static int determine_process_identifier(uint32_t pid)
 
     // This is a 32-bit machine.
     if(si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL) {
-        printf("32");
+        ;//printf("32");
         return 0;
     }
 
@@ -103,7 +103,7 @@ static int determine_process_identifier(uint32_t pid)
         error("Invalid processor architecture\n");
     }
 
-    printf(wow64_process == FALSE ? "64" : "32");
+    ;//printf(wow64_process == FALSE ? "64" : "32");
     return 0;
 }
 
@@ -132,7 +132,7 @@ static int determine_pe_file(const wchar_t *filepath)
     // this is a MZ-DOS file rather than a PE file.
     if(image_dos_header->e_lfanew >= li.QuadPart) {
         CloseHandle(file_handle);
-        printf("32");
+        ;//printf("32");
         return 0;
     }
 
@@ -144,18 +144,18 @@ static int determine_pe_file(const wchar_t *filepath)
 
     // If this doesn't match, then we're assuming a MZ-DOS file.
     if(image_nt_headers->Signature != IMAGE_NT_SIGNATURE) {
-        printf("32");
+        ;//printf("32");
         return 0;
     }
 
     // Handle 64-bit PE files.
     if(image_nt_headers->FileHeader.Machine == IMAGE_FILE_MACHINE_AMD64) {
-        printf("64");
+        ;//printf("64");
         return 0;
     }
 
     // Everything else we assume to be either a MZ-DOS or 32-bit PE file.
-    printf("32");
+    ;//printf("32");
     return 0;
 }
 
