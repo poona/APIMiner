@@ -10,3 +10,8 @@
 
 APIMiner v1.0.0
 API Logger for Windows Executables
+
+Anoop Saldanha, Abhijit Mohanta
+
+The latest release - https://github.com/poona/APIMiner/releases/download/1.0.0/release-v1.0.0.zip
+
